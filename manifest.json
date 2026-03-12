@@ -1,0 +1,16 @@
+{
+  "name": "Working Hours",
+  "short_name": "Working Hours",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#277DA1",
+  "icons": [
+  {
+    "src": "icons/octupos.png",
+    "sizes": "512x512",
+    "type": "image/png"
+  }  
+    
+]
+}
