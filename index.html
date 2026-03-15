@@ -395,7 +395,8 @@
 
 <script>
 const WORK_HOURS = 9;
-const ALLOWED_DEDUCTION = 4;
+const THURSDAY_WORK_HOURS = 8.5;
+const ALLOWED_DEDUCTION = 5;
 const DAYS_HE = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 
@@ -477,6 +478,12 @@ function fmtDuration(mins) {
 
 function getDayTotalMins(rec) {
   return rec.sessions.reduce((s,sess) => s + calcMins(sess.in, sess.out), 0);
+}
+
+function getDayRequiredMins(dateIso) {
+  const d = new Date(dateIso);
+  // getDay(): 0=Sunday,1=Monday,...,4=Thursday
+  return d.getDay() === 4 ? THURSDAY_WORK_HOURS * 60 : WORK_HOURS * 60;
 }
 
 /* ---- RECORD HELPERS ---- */
@@ -647,7 +654,7 @@ function render() {
   // Only count days that have at least one completed session
   const completedRecords = records.filter(r => r.sessions.length > 0);
   const totalMins = completedRecords.reduce((s, r) => s + getDayTotalMins(r), 0);
-  const requiredMins = completedRecords.length * WORK_HOURS * 60;
+  const requiredMins = completedRecords.reduce((s, r) => s + getDayRequiredMins(r.date), 0);
 
   // Net balance = actual hours - required hours (no deduction allowance in the running total,
   // the 4h allowance is the threshold for showing red, not added to the balance)
@@ -667,16 +674,30 @@ function render() {
     cumEl.className = 'cum-value pos';
     cumBar.className = 'progress-fill pos';
     cumBar.style.width = Math.min(100, 50 + (balanceMins/60)*4) + '%';
+    cumBar.style.background = '';
+    cumEl.style.color = '';
     cumLabel.textContent = '✅ עודף שעות';
   } else {
     // Negative balance
-    cumEl.className = 'cum-value neg';
-    cumBar.className = 'progress-fill neg';
     cumBar.style.width = Math.max(0, 50 - (Math.abs(balanceMins)/60)*8) + '%';
-    if (balanceMins < -ALLOWED_DEDUCTION * 60) {
-      // worse than -4 hours → red + warning
-      cumLabel.innerHTML = '🔴 חריגה ממכסת החיסורים! (מעל 4 שעות חוסר)';
+    if (balanceMins <= -ALLOWED_DEDUCTION * 60) {
+      // 5h+ deficit → full red
+      cumEl.className = 'cum-value neg';
+      cumEl.style.color = '';
+      cumBar.className = 'progress-fill neg';
+      cumBar.style.background = '';
+      cumLabel.innerHTML = '🔴 חריגה ממכסת החיסורים! (מעל 5 שעות חוסר)';
     } else {
+      // 0–5h deficit → orange fading to red
+      const ratio = Math.abs(balanceMins) / (ALLOWED_DEDUCTION * 60); // 0..1
+      const r = Math.round(200 + 55 * ratio);   // 200→255
+      const g = Math.round(120 - 120 * ratio);   // 120→0
+      const b = 0;
+      const color = `rgb(${r},${g},${b})`;
+      cumEl.className = 'cum-value';
+      cumEl.style.color = color;
+      cumBar.className = 'progress-fill';
+      cumBar.style.background = `linear-gradient(90deg, rgb(200,120,0), ${color})`;
       cumLabel.textContent = '⚠️ חוסר שעות (בטווח המכסה)';
     }
   }
@@ -697,7 +718,7 @@ function render() {
     const hasSessions = rec.sessions.length > 0;
 
     if (hasSessions) {
-      const diff = dayTotal - WORK_HOURS * 60;
+      const diff = dayTotal - getDayRequiredMins(rec.date);
       const tagClass = diff > 0 ? 'plus' : diff < 0 ? 'minus' : 'zero';
       const tagText = (diff >= 0 ? '+' : '') + fmtDuration(diff);
       const sessionCount = rec.sessions.length;
@@ -758,7 +779,8 @@ function exportExcel() {
     const d = new Date(rec.date);
     const dayTotal = getDayTotalMins(rec);
     totalMins += dayTotal;
-    const diff = dayTotal - WORK_HOURS * 60;
+    const reqMinsDay = getDayRequiredMins(rec.date);
+    const diff = dayTotal - reqMinsDay;
     const firstSess = rec.sessions[0];
 
     ws_data.push([
@@ -767,12 +789,12 @@ function exportExcel() {
       firstSess.in,
       rec.sessions.length === 1 ? firstSess.out : rec.sessions.map(s=>s.in+'-'+s.out).join(' | '),
       fmtDuration(dayTotal),
-      WORK_HOURS + ':00',
+      fmtDuration(reqMinsDay),
       (diff >= 0 ? '+' : '') + fmtDuration(diff)
     ]);
   });
 
-  const reqMins = completedRecs.length * WORK_HOURS * 60;
+  const reqMins = completedRecs.reduce((s, r) => s + getDayRequiredMins(r.date), 0);
   const balance = totalMins - reqMins;
   ws_data.push([]);
   ws_data.push(['סה"כ','','','',fmtDuration(totalMins),fmtDuration(reqMins),(balance>=0?'+':'')+fmtDuration(balance)]);
@@ -986,3 +1008,4 @@ render();
 </script>
 </body>
 </html>
+
